@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IaC Compliance Audit — 2026-04-22</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f1f5f9;color:#1e293b;font-size:14px;line-height:1.5}
+a{color:#3b82f6;text-decoration:none}
+code{font-family:'SF Mono',Consolas,monospace;font-size:12px;background:#f1f5f9;padding:1px 5px;border-radius:4px;border:1px solid #e2e8f0}
+pre{font-family:'SF Mono',Consolas,monospace;font-size:12px;background:#0f172a;color:#e2e8f0;padding:14px;border-radius:6px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;margin-top:8px}
+/* Header */
+.header{background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);color:#f8fafc;padding:20px 32px;display:flex;justify-content:space-between;align-items:flex-start}
+.header-left h1{font-size:20px;font-weight:800;letter-spacing:-0.3px}
+.header-left .sub{font-size:12px;color:#94a3b8;margin-top:4px}
+.header-right{text-align:right;font-size:12px;color:#94a3b8;line-height:1.8}
+.header-right strong{color:#e2e8f0}
+/* Container */
+.container{max-width:1280px;margin:0 auto;padding:24px 32px}
+/* Cards */
+.card{background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06);padding:22px 24px;margin-bottom:20px}
+.card h2{font-size:14px;font-weight:700;color:#334155;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:8px}
+/* Score Grid */
+.scores{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.score-card{background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:20px;text-align:center;position:relative;overflow:hidden}
+.score-card::before{content:'';position:absolute;top:0;left:0;right:0;height:4px}
+.sc-pci::before{background:#ef4444}.sc-soc::before{background:#f97316}.sc-gdpr::before{background:#8b5cf6}.sc-hipaa::before{background:#06b6d4}
+.score-card .fw{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.score-card .val{font-size:42px;font-weight:900;line-height:1;color:#dc2626}
+.score-card .denom{font-size:13px;color:#94a3b8;margin-top:2px}
+.score-card .badge-r{display:inline-block;margin-top:10px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.not-ready{background:#fee2e2;color:#991b1b}.partial{background:#fef3c7;color:#92400e}.ready{background:#dcfce7;color:#15803d}
+/* Summary Bar */
+.sbar{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+.sbar-item{background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:14px;text-align:center}
+.sbar-item .n{font-size:34px;font-weight:900;line-height:1}
+.sbar-item .l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-top:4px}
+.n-c{color:#dc2626}.n-h{color:#ea580c}.n-m{color:#d97706}.n-l{color:#2563eb}.n-t{color:#334155}
+/* Severity badges */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:700;text-transform:uppercase;white-space:nowrap}
+.b-CRITICAL{background:#fee2e2;color:#991b1b}.b-HIGH{background:#ffedd5;color:#9a3412}
+.b-MEDIUM{background:#fef9c3;color:#854d0e}.b-LOW{background:#dbeafe;color:#1e40af}
+.b-PASS{background:#dcfce7;color:#15803d}.b-FAIL{background:#fee2e2;color:#991b1b}.b-NA{background:#f1f5f9;color:#64748b}
+/* Findings Table */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{background:#f8fafc;text-align:left;padding:9px 12px;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid #e2e8f0;white-space:nowrap;position:sticky;top:0}
+tbody td{padding:9px 12px;border-bottom:1px solid #f8fafc;vertical-align:middle}
+.finding-row:hover td{background:#fafafa;cursor:pointer}
+.detail-row td{padding:0}
+.detail-inner{padding:14px 20px;background:#f8fafc;border-left:3px solid #e2e8f0;margin:0 8px 8px;border-radius:0 0 6px 6px;display:none}
+.detail-inner.open{display:block}
+.detail-inner p{margin-bottom:8px;font-size:13px;color:#475569}
+.detail-inner strong{color:#1e293b}
+.expand-btn{background:none;border:1px solid #e2e8f0;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;color:#64748b;transition:all .15s}
+.expand-btn:hover{background:#f1f5f9;border-color:#cbd5e1}
+/* Effort pill */
+.effort{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600}
+.e-Low{background:#dcfce7;color:#15803d}.e-Medium{background:#fef9c3;color:#854d0e}.e-High{background:#fee2e2;color:#991b1b}
+/* Filters */
+.filters{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.filters label{font-size:12px;font-weight:600;color:#64748b}
+.filters select,.filters input{padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;background:#fff;color:#334155;outline:none}
+.filters select:focus,.filters input:focus{border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.15)}
+.filter-count{font-size:12px;color:#64748b;margin-left:auto}
+/* Matrix */
+.matrix th,.matrix td{padding:7px 10px;font-size:11px;border:1px solid #e2e8f0}
+.matrix th{background:#f8fafc;font-weight:700;color:#475569}
+.m-pass{background:#dcfce7;color:#15803d;font-weight:700;text-align:center}
+.m-fail{background:#fee2e2;color:#991b1b;font-weight:700;text-align:center}
+.m-na{background:#f8fafc;color:#94a3b8;text-align:center;font-size:10px}
+/* Risk chains */
+.chain-item{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid #f1f5f9}
+.chain-item:last-child{border-bottom:none}
+.chain-sev{flex-shrink:0;width:8px;border-radius:4px}
+.chain-sev-c{background:#dc2626}.chain-sev-h{background:#ea580c}
+.chain-body p{font-size:13px;color:#475569;margin-bottom:4px}
+.chain-body .chain-ids{font-size:11px;color:#64748b}
+/* Roadmap */
+.rm-section{margin-bottom:16px}
+.rm-title{font-size:13px;font-weight:700;padding:8px 14px;border-radius:6px;margin-bottom:10px}
+.rm-c{background:#fee2e2;color:#991b1b}.rm-h{background:#ffedd5;color:#9a3412}.rm-m{background:#fef9c3;color:#854d0e}.rm-l{background:#dbeafe;color:#1e40af}
+.rm-items{display:flex;flex-wrap:wrap;gap:6px;padding-left:4px}
+.rm-id{font-size:11px;padding:2px 8px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;color:#334155;transition:all .15s}
+.rm-id:hover{background:#e2e8f0}
+/* Executive Summary */
+.exec-p{font-size:13px;color:#475569;line-height:1.8}
+/* Footer */
+footer{text-align:center;padding:24px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;margin-top:8px;background:#fff}
+footer p+p{margin-top:6px}
+/* Print */
+@media print{
+  .filters,.expand-btn{display:none!important}
+  .detail-inner{display:block!important}
+  .header{background:#1e293b!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{background:#fff}
+  .card{box-shadow:none;border:1px solid #e2e8f0}
+}
+@media(max-width:900px){
+  .scores{grid-template-columns:repeat(2,1fr)}
+  .sbar{grid-template-columns:repeat(3,1fr)}
+  .container{padding:16px}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══ -->
+<div class="header">
+  <div class="header-left">
+    <h1>🛡 IaC Compliance Audit Report</h1>
+    <div class="sub">Claude IaC Compliance Audit Skill v3.0 · Pre-Audit Gap Analysis</div>
+  </div>
+  <div class="header-right">
+    <strong>Date:</strong> 2026-04-22<br>
+    <strong>Mode:</strong> Static IaC<br>
+    <strong>Frameworks:</strong> PCI DSS v4.0 · SOC 2 Type 2 · GDPR · HIPAA<br>
+    <strong>Domains:</strong> ALL (01–20)<br>
+    <strong>Path:</strong> ~/iac-compliance-audit/test-fixtures
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ═══ EXECUTIVE SUMMARY ═══ -->
+<div class="card">
+  <h2>📋 Executive Summary</h2>
+  <p class="exec-p">
+    This infrastructure codebase is in a <strong>critically non-compliant posture</strong> across all four frameworks, with <strong>14 CRITICAL</strong> and <strong>18 HIGH</strong> findings that collectively prevent any certification or attestation process from succeeding. The most urgent risks are: unauthenticated Lambda Function URLs and GCP Cloud Functions fully exposed to the public internet; production credentials hardcoded in Jenkinsfile and Dockerfile (committed to version control and likely already compromised); a Kubernetes payment-service container running as root with privileged mode, host network, and host PID access enabled simultaneously; and a cardholder data S3 bucket with all four public-access block settings disabled alongside a wildcard Principal policy, making it world-readable. PHI-classified workloads (<code>phi_processor</code>, <code>phi_records</code>, <code>ehr_records</code>) violate HIPAA §164.312(e) — none have VPC isolation, CMK encryption, or versioning. No resource across all 11 scanned files carries any compliance tagging, making data classification and audit evidence collection impossible. <strong>Immediate remediation is required before this infrastructure can support any regulated workload.</strong>
+  </p>
+</div>
+
+<!-- ═══ COMPLIANCE SCORES ═══ -->
+<div class="scores">
+  <div class="score-card sc-pci">
+    <div class="fw">PCI DSS v4.0</div>
+    <div class="val">0</div>
+    <div class="denom">/ 100</div>
+    <span class="badge-r not-ready">Not Ready</span>
+  </div>
+  <div class="score-card sc-soc">
+    <div class="fw">SOC 2 Type 2</div>
+    <div class="val">0</div>
+    <div class="denom">/ 100</div>
+    <span class="badge-r not-ready">Not Ready</span>
+  </div>
+  <div class="score-card sc-gdpr">
+    <div class="fw">GDPR</div>
+    <div class="val">0</div>
+    <div class="denom">/ 100</div>
+    <span class="badge-r not-ready">Not Ready</span>
+  </div>
+  <div class="score-card sc-hipaa">
+    <div class="fw">HIPAA</div>
+    <div class="val">0</div>
+    <div class="denom">/ 100</div>
+    <span class="badge-r not-ready">Not Ready</span>
+  </div>
+</div>
+<div style="font-size:11px;color:#94a3b8;text-align:right;margin-top:-14px;margin-bottom:20px">
+  Scoring: −25 per CRITICAL · −10 per HIGH · −5 per MEDIUM · −2 per LOW · floor 0 &nbsp;|&nbsp; ≥80 Ready · 50–79 Partially Ready · &lt;50 Not Ready
+</div>
+
+<!-- ═══ SUMMARY BAR ═══ -->
+<div class="sbar">
+  <div class="sbar-item"><div class="n n-c">14</div><div class="l">Critical</div></div>
+  <div class="sbar-item"><div class="n n-h">18</div><div class="l">High</div></div>
+  <div class="sbar-item"><div class="n n-m">12</div><div class="l">Medium</div></div>
+  <div class="sbar-item"><div class="n n-l">5</div><div class="l">Low</div></div>
+  <div class="sbar-item"><div class="n n-t">49</div><div class="l">Total</div></div>
+</div>
+
+<!-- ═══ FINDINGS TABLE ═══ -->
+<div class="card">
+  <h2>🔍 Findings</h2>
+  <div class="filters">
+    <label>Severity:</label>
+    <select id="sev-f" onchange="applyFilters()">
+      <option value="">All</option>
+      <option value="CRITICAL">Critical (14)</option>
+      <option value="HIGH">High (18)</option>
+      <option value="MEDIUM">Medium (12)</option>
+      <option value="LOW">Low (5)</option>
+    </select>
+    <label>Domain:</label>
+    <select id="dom-f" onchange="applyFilters()">
+      <option value="">All Domains</option>
+      <option value="01">01 Network</option>
+      <option value="02">02 Encryption at Rest</option>
+      <option value="03">03 Encryption in Transit</option>
+      <option value="04">04 IAM</option>
+      <option value="05">05 Logging</option>
+      <option value="06">06 Container</option>
+      <option value="07">07 CI/CD</option>
+      <option value="08">08 Availability</option>
+      <option value="09">09 Secrets</option>
+      <option value="10">10 Serverless</option>
+      <option value="11">11 Database</option>
+      <option value="12">12 API/WAF</option>
+      <option value="13">13 DNS/Certs</option>
+      <option value="14">14 Storage</option>
+      <option value="15">15 Messaging</option>
+      <option value="16">16 Supply Chain</option>
+      <option value="17">17 Cross-Account</option>
+      <option value="18">18 Data Class.</option>
+      <option value="19">19 GDPR</option>
+      <option value="20">20 HIPAA</option>
+    </select>
+    <label>Search:</label>
+    <input type="text" id="search-f" placeholder="resource, file, keyword…" oninput="applyFilters()" style="width:220px">
+    <span class="filter-count" id="filter-count">Showing 49 of 49 findings</span>
+  </div>
+  <div class="tbl-wrap">
+    <table id="findings-table">
+      <thead>
+        <tr>
+          <th>ID</th><th>Severity</th><th>Domain</th><th>Resource / File</th>
+          <th>Frameworks</th><th>Effort</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="findings-body">
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ COMPLIANCE COVERAGE MATRIX ═══ -->
+<div class="card">
+  <h2>📊 Compliance Coverage Matrix</h2>
+  <div class="tbl-wrap">
+    <table class="matrix">
+      <thead>
+        <tr><th>Domain</th><th>PCI DSS v4.0</th><th>SOC 2 Type 2</th><th>GDPR</th><th>HIPAA</th><th>Static Result</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>01 Network Security</td><td>Req 1</td><td>CC6.6</td><td>Art. 32</td><td>§164.312(e)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>02 Encryption at Rest</td><td>Req 3</td><td>CC6.1</td><td>Art. 25, 32</td><td>§164.312(a)(2)(iv)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>03 Encryption in Transit</td><td>Req 4</td><td>CC6.7</td><td>Art. 32</td><td>§164.312(e)(2)(ii)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>04 IAM &amp; Access Control</td><td>Req 7, 8</td><td>CC6.1–CC6.3</td><td>Art. 25</td><td>§164.312(a),(d)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>05 Logging &amp; Monitoring</td><td>Req 10</td><td>CC7.2, CC7.3</td><td>Art. 33</td><td>§164.312(b)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>06 Container &amp; Workload</td><td>Req 2, 6</td><td>CC7.1</td><td>Art. 25</td><td>§164.312(c)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>07 CI/CD &amp; Change Control</td><td>Req 6.4</td><td>CC8.1, CC8.2</td><td>Art. 25</td><td>§164.312(c)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>08 Availability</td><td>Req 12.3</td><td>A1.1, A1.2</td><td>Art. 32</td><td>§164.312(a)(2)(ii)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>09 Key &amp; Secrets Mgmt</td><td>Req 3.7</td><td>CC6.1</td><td>Art. 25</td><td>§164.312(a)(2)(iv)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>10 Serverless Security</td><td>Req 6, 7</td><td>CC6.3</td><td>Art. 25</td><td>§164.312(a)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>11 Database Security</td><td>Req 2, 3, 10</td><td>CC6.1</td><td>Art. 25</td><td>§164.312(a),(b)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>12 API Gateway &amp; WAF</td><td>Req 1, 6</td><td>CC6.6</td><td>Art. 25</td><td>§164.312(e)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>13 DNS &amp; Certificates</td><td>Req 4</td><td>CC6.7</td><td>Art. 32</td><td>§164.312(e)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>14 Object Storage</td><td>Req 3, 7</td><td>CC6.1, C1.1</td><td>Art. 5, 25</td><td>§164.312(a),(c)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>15 Message Queue &amp; Events</td><td>Req 3, 4</td><td>CC6.1, CC6.7</td><td>Art. 32</td><td>§164.312(e)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>16 Supply Chain</td><td>Req 6.3</td><td>CC8.1</td><td>Art. 25</td><td>§164.312(c)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>17 Cross-Account Trust</td><td>Req 7, 8</td><td>CC6.2, CC6.3</td><td>Art. 25</td><td>§164.312(a)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>18 Data Classification</td><td>Req 3, 9.4</td><td>C1.1, PI1.1</td><td>Art. 5, 30</td><td>§164.312(a)</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>19 GDPR-Specific</td><td class="m-na">—</td><td class="m-na">—</td><td>Art. 5, 17, 25, 44</td><td class="m-na">—</td><td class="m-fail">FAIL</td></tr>
+        <tr><td>20 HIPAA-Specific</td><td class="m-na">—</td><td class="m-na">—</td><td class="m-na">—</td><td>§164.312 (all)</td><td class="m-fail">FAIL</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ CROSS-DOMAIN RISK CHAINS ═══ -->
+<div class="card">
+  <h2>⛓ Cross-Domain Risk Chains</h2>
+  <div class="chain-item">
+    <div class="chain-sev chain-sev-c"></div>
+    <div class="chain-body">
+      <p><strong>Complete Cardholder Data Exposure Chain</strong><br>
+      <span class="badge b-CRITICAL">C-001</span> Open SG (0.0.0.0/0 on port 3306) +
+      <span class="badge b-CRITICAL">C-002</span> RDS publicly_accessible=true +
+      <span class="badge b-HIGH">H-001</span> RDS unencrypted at rest +
+      <span class="badge b-HIGH">H-002</span> MFA delete disabled on cardholder bucket =
+      <strong>cardholder data fully accessible from the public internet, in plaintext, with no deletion audit trail</strong> — immediate PCI DSS Req 1 + Req 3 failure.</p>
+    </div>
+  </div>
+  <div class="chain-item">
+    <div class="chain-sev chain-sev-c"></div>
+    <div class="chain-body">
+      <p><strong>Complete Audit Trail Absence</strong><br>
+      <span class="badge b-HIGH">H-006</span> CloudTrail single-region + no log validation +
+      <span class="badge b-HIGH">H-007</span> CloudWatch log groups with retention=0 +
+      <span class="badge b-HIGH">H-008</span> Terraform state in plaintext S3 (no versioning) =
+      <strong>zero tamper-proof audit trail</strong> — PCI DSS Req 10 total failure, SOC 2 CC7.2 failure, GDPR Art. 33 breach notification impossible.</p>
+    </div>
+  </div>
+  <div class="chain-item">
+    <div class="chain-sev chain-sev-c"></div>
+    <div class="chain-body">
+      <p><strong>Container → Node Escape Path</strong><br>
+      <span class="badge b-CRITICAL">C-006</span> privileged=true + runAsUser=0 + hostNetwork=true + hostPID=true +
+      <span class="badge b-CRITICAL">C-005</span> cluster-admin ClusterRoleBinding =
+      <strong>a single compromised payment-service pod can access all host processes, all host network interfaces, and has full Kubernetes cluster admin</strong> — complete workload isolation failure.</p>
+    </div>
+  </div>
+  <div class="chain-item">
+    <div class="chain-sev chain-sev-c"></div>
+    <div class="chain-body">
+      <p><strong>Supply Chain → Production Takeover</strong><br>
+      <span class="badge b-HIGH">H-009</span> Unpinned GitHub Actions (@main/@master/@HEAD) +
+      <span class="badge b-HIGH">H-010</span> write-all permissions on workflow +
+      <span class="badge b-CRITICAL">C-007</span> auto-approve production deploy =
+      <strong>a single upstream repo compromise executes arbitrary code with write-all GitHub token and auto-deploys to production</strong> — PCI DSS Req 6.3 supply chain failure.</p>
+    </div>
+  </div>
+  <div class="chain-item">
+    <div class="chain-sev chain-sev-c"></div>
+    <div class="chain-body">
+      <p><strong>HIPAA PHI Exposure Chain</strong><br>
+      <span class="badge b-CRITICAL">C-013</span> phi_processor Lambda has no VPC (PHI traverses public internet) +
+      <span class="badge b-CRITICAL">C-014</span> phi_records S3 versioning disabled +
+      <span class="badge b-MEDIUM">M-011</span> No KMS CMK on PHI resources +
+      <span class="badge b-HIGH">H-018</span> Shared IAM user =
+      <strong>PHI is transmitted unprotected over public internet, cannot be integrity-verified, and access cannot be attributed to individuals</strong> — §164.312(e)(1), §164.312(c)(1), §164.312(a)(2)(i) failures.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ REMEDIATION ROADMAP ═══ -->
+<div class="card">
+  <h2>🗺 Prioritised Remediation Roadmap</h2>
+  <div class="rm-section">
+    <div class="rm-title rm-c">⚡ Week 1 — Immediate (CRITICAL) — 14 items</div>
+    <div class="rm-items">
+      <span class="rm-id" onclick="jumpTo('C-001')">C-001</span>
+      <span class="rm-id" onclick="jumpTo('C-002')">C-002</span>
+      <span class="rm-id" onclick="jumpTo('C-003')">C-003</span>
+      <span class="rm-id" onclick="jumpTo('C-004')">C-004</span>
+      <span class="rm-id" onclick="jumpTo('C-005')">C-005</span>
+      <span class="rm-id" onclick="jumpTo('C-006')">C-006</span>
+      <span class="rm-id" onclick="jumpTo('C-007')">C-007</span>
+      <span class="rm-id" onclick="jumpTo('C-008')">C-008 🔑 rotate now</span>
+      <span class="rm-id" onclick="jumpTo('C-009')">C-009 🔑 rotate now</span>
+      <span class="rm-id" onclick="jumpTo('C-010')">C-010</span>
+      <span class="rm-id" onclick="jumpTo('C-011')">C-011</span>
+      <span class="rm-id" onclick="jumpTo('C-012')">C-012</span>
+      <span class="rm-id" onclick="jumpTo('C-013')">C-013</span>
+      <span class="rm-id" onclick="jumpTo('C-014')">C-014</span>
+    </div>
+  </div>
+  <div class="rm-section">
+    <div class="rm-title rm-h">📅 Month 1 — Short-term (HIGH) — 18 items</div>
+    <div class="rm-items">
+      <span class="rm-id" onclick="jumpTo('H-001')">H-001</span><span class="rm-id" onclick="jumpTo('H-002')">H-002</span>
+      <span class="rm-id" onclick="jumpTo('H-003')">H-003</span><span class="rm-id" onclick="jumpTo('H-004')">H-004</span>
+      <span class="rm-id" onclick="jumpTo('H-005')">H-005</span><span class="rm-id" onclick="jumpTo('H-006')">H-006</span>
+      <span class="rm-id" onclick="jumpTo('H-007')">H-007</span><span class="rm-id" onclick="jumpTo('H-008')">H-008</span>
+      <span class="rm-id" onclick="jumpTo('H-009')">H-009</span><span class="rm-id" onclick="jumpTo('H-010')">H-010</span>
+      <span class="rm-id" onclick="jumpTo('H-011')">H-011</span><span class="rm-id" onclick="jumpTo('H-012')">H-012</span>
+      <span class="rm-id" onclick="jumpTo('H-013')">H-013</span><span class="rm-id" onclick="jumpTo('H-014')">H-014</span>
+      <span class="rm-id" onclick="jumpTo('H-015')">H-015</span><span class="rm-id" onclick="jumpTo('H-016')">H-016</span>
+      <span class="rm-id" onclick="jumpTo('H-017')">H-017</span><span class="rm-id" onclick="jumpTo('H-018')">H-018</span>
+    </div>
+  </div>
+  <div class="rm-section">
+    <div class="rm-title rm-m">📆 Quarter 1 — Medium-term (MEDIUM) — 12 items</div>
+    <div class="rm-items">
+      <span class="rm-id" onclick="jumpTo('M-001')">M-001</span><span class="rm-id" onclick="jumpTo('M-002')">M-002</span>
+      <span class="rm-id" onclick="jumpTo('M-003')">M-003</span><span class="rm-id" onclick="jumpTo('M-004')">M-004</span>
+      <span class="rm-id" onclick="jumpTo('M-005')">M-005</span><span class="rm-id" onclick="jumpTo('M-006')">M-006</span>
+      <span class="rm-id" onclick="jumpTo('M-007')">M-007</span><span class="rm-id" onclick="jumpTo('M-008')">M-008</span>
+      <span class="rm-id" onclick="jumpTo('M-009')">M-009</span><span class="rm-id" onclick="jumpTo('M-010')">M-010</span>
+      <span class="rm-id" onclick="jumpTo('M-011')">M-011</span><span class="rm-id" onclick="jumpTo('M-012')">M-012</span>
+    </div>
+  </div>
+  <div class="rm-section">
+    <div class="rm-title rm-l">📋 Backlog (LOW) — 5 items</div>
+    <div class="rm-items">
+      <span class="rm-id" onclick="jumpTo('L-001')">L-001</span><span class="rm-id" onclick="jumpTo('L-002')">L-002</span>
+      <span class="rm-id" onclick="jumpTo('L-003')">L-003</span><span class="rm-id" onclick="jumpTo('L-004')">L-004</span>
+      <span class="rm-id" onclick="jumpTo('L-005')">L-005</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ AUDITOR EVIDENCE NOTES ═══ -->
+<div class="card">
+  <h2>📁 Auditor Evidence Package Notes</h2>
+  <p style="font-size:13px;color:#475569;line-height:1.8">
+    For each resolved finding, collect the following evidence before your formal audit:<br>
+    &nbsp;&nbsp;• <strong>Git commit hash</strong> of the IaC remediation (<code>git log --oneline -1</code>)<br>
+    &nbsp;&nbsp;• <strong>Terraform plan output</strong> showing the resource change (<code>terraform plan -out=plan.tfplan && terraform show -json plan.tfplan</code>)<br>
+    &nbsp;&nbsp;• <strong>CLI export</strong> confirming the fixed state (<code>aws rds describe-db-instances --db-instance-identifier &lt;id&gt;</code>)<br>
+    &nbsp;&nbsp;• <strong>Screenshot or JSON export</strong> from AWS Console / GCP Console / Azure Portal<br>
+    &nbsp;&nbsp;• <strong>Policy documentation</strong> for any compensating controls<br><br>
+    Re-run <code>/iac-audit --mode all</code> after remediating CRITICAL findings to confirm resolution and update scores.
+  </p>
+</div>
+
+</div><!-- /container -->
+
+<footer>
+  <p>This report is a <strong>pre-audit gap analysis</strong>. It does not replace a formal PCI DSS audit by a certified QSA, SOC 2 audit by an AICPA-accredited CPA firm, GDPR assessment by a licensed DPO, or HIPAA review by a certified compliance consultant.</p>
+  <p>Generated by <strong>Claude IaC Compliance Audit Skill v3.0</strong> · 2026-04-22 · Path: ~/iac-compliance-audit/test-fixtures · 49 findings across 20 domains</p>
+</footer>
+
+<script>
+// ─── Findings Data ─────────────────────────────────────────────────────────
+const FINDINGS = [
+  // CRITICAL
+  {id:"C-001",sev:"CRITICAL",dom:"01",dname:"Network Security",resource:"aws_security_group.open_sg",file:"terraform/networking.tf:8–33",fw:"PCI DSS Req 1.3 · SOC 2 CC6.6 · GDPR Art. 32 · HIPAA §164.312(e)",effort:"Low",
+   issue:"Three inbound rules allow unrestricted traffic from 0.0.0.0/0: port 22 (SSH), port 3306 (MySQL), and protocol=-1 (all traffic/all ports). Any host on the internet can reach this security group.",
+   impact:"PCI DSS Req 1.3.2 failure — direct internet access to databases. A QSA will cite this as an immediate Level 1 finding. HIPAA §164.312(e)(1) — PHI transmitted across a network with no access controls.",
+   remediation:`ingress {\n  from_port   = 22\n  to_port     = 22\n  protocol    = "tcp"\n  cidr_blocks = ["10.0.0.0/8"]  # VPN/bastion CIDR only\n}\n# Remove port 3306 inbound — use VPC peering or PrivateLink\n# Remove protocol="-1" rule entirely`},
+
+  {id:"C-002",sev:"CRITICAL",dom:"01",dname:"Network Security",resource:"aws_db_instance.public_db",file:"terraform/networking.tf:45",fw:"PCI DSS Req 1.3 · GDPR Art. 32 · HIPAA §164.312(e)",effort:"Medium",
+   issue:"publicly_accessible = true exposes the RDS endpoint to the public internet. Combined with the open security group (C-001), this database is reachable from any IP worldwide.",
+   impact:"PCI DSS Req 1.3.2 — databases containing cardholder data must not be accessible from untrusted networks.",
+   remediation:`resource "aws_db_instance" "public_db" {\n  publicly_accessible = false\n  # Place in private subnet, access via bastion or VPC endpoint\n}`},
+
+  {id:"C-003",sev:"CRITICAL",dom:"04",dname:"IAM & Access Control",resource:"aws_iam_role_policy.wildcard_policy",file:"terraform/iam.tf:11–12",fw:"PCI DSS Req 7.2 · SOC 2 CC6.3 · GDPR Art. 25 · HIPAA §164.312(a)(1)",effort:"Medium",
+   issue:"IAM policy uses Action = \"*\" and Resource = \"*\" via jsonencode(). Grants every AWS API action on every resource — root-equivalent access.",
+   impact:"PCI DSS Req 7.2.1 requires minimum-necessary access. This policy is the worst possible IAM posture. Blocks all framework audits.",
+   remediation:`policy = jsonencode({\n  Version = "2012-10-17"\n  Statement = [{\n    Effect   = "Allow"\n    Action   = ["s3:GetObject", "s3:PutObject"]  # specific only\n    Resource = "arn:aws:s3:::my-bucket/*"\n  }]\n})`},
+
+  {id:"C-004",sev:"CRITICAL",dom:"04",dname:"IAM & Access Control",resource:"aws_iam_role_policy_attachment.lambda_admin",file:"terraform/iam.tf:20",fw:"PCI DSS Req 7.2 · SOC 2 CC6.3 · HIPAA §164.312(a)(1)",effort:"Medium",
+   issue:"arn:aws:iam::aws:policy/AdministratorAccess is attached to a Lambda execution role. A compromised function has full account takeover capability.",
+   impact:"A compromised Lambda via code injection or dependency confusion = full AWS account compromise.",
+   remediation:`resource "aws_iam_role_policy_attachment" "lambda_exec" {\n  policy_arn = aws_iam_policy.lambda_minimal.arn\n  role       = aws_iam_role.lambda_exec.name\n}`},
+
+  {id:"C-005",sev:"CRITICAL",dom:"04",dname:"IAM & Access Control",resource:"ClusterRoleBinding.app-cluster-admin",file:"kubernetes/rbac.yaml:6–13",fw:"PCI DSS Req 7 · SOC 2 CC6.1 · GDPR Art. 25 · HIPAA §164.312(a)(1)",effort:"Medium",
+   issue:"app-service-account in namespace production is bound directly to cluster-admin ClusterRole. Can create/delete any resource across all namespaces.",
+   impact:"Full cluster compromise via one service account. SOC 2 CC6.3 — least-privilege violation.",
+   remediation:`# Replace with namespace-scoped RoleBinding using custom Role\napiVersion: rbac.authorization.k8s.io/v1\nkind: RoleBinding  # NOT ClusterRoleBinding\nmetadata:\n  namespace: production\nroleRef:\n  kind: Role\n  name: app-minimal-role`},
+
+  {id:"C-006",sev:"CRITICAL",dom:"06",dname:"Container & Workload",resource:"Deployment.payment-service",file:"kubernetes/deployment.yaml:18–34",fw:"PCI DSS Req 2.2, 6 · SOC 2 CC7.1 · GDPR Art. 25 · HIPAA §164.312(c)",effort:"Low",
+   issue:"Stacked container security failures: runAsUser=0 (root), privileged=true, allowPrivilegeEscalation=true, hostNetwork=true, hostPID=true. A compromised pod can escape to the host node.",
+   impact:"Complete workload isolation failure. A QSA will flag this as PCI Req 2.2.1 — system components using unnecessary/default accounts.",
+   remediation:`securityContext:\n  runAsNonRoot: true\n  runAsUser: 1000\n  allowPrivilegeEscalation: false\n  readOnlyRootFilesystem: true\n  capabilities:\n    drop: ["ALL"]\nhostNetwork: false\nhostPID: false`},
+
+  {id:"C-007",sev:"CRITICAL",dom:"07",dname:"CI/CD & Change Control",resource:"GitHub Actions deploy · Jenkinsfile Stage",file:"cicd/.github/workflows/deploy.yml:34 · cicd/Jenkinsfile:24",fw:"PCI DSS Req 6.4.2 · SOC 2 CC8.1 · GDPR Art. 25 · HIPAA §164.312(c)",effort:"Low",
+   issue:"Both pipelines deploy directly to production without any human approval gate. terraform apply -auto-approve and kubectl apply run on every push to main. No input{} block in Jenkinsfile.",
+   impact:"Any developer with push access can trigger an immediate production change. PCI Req 6.4.2 — change management failure.",
+   remediation:`# GitHub Actions: add environment protection\ndeploy:\n  environment:\n    name: production\n# Configure Required Reviewers in repo Settings > Environments\n\n// Jenkinsfile: add approval\nstage('Approval') {\n  steps { input 'Deploy to production?', submitter: 'ops-team' }\n}`},
+
+  {id:"C-008",sev:"CRITICAL",dom:"09",dname:"Key & Secrets Mgmt",resource:"Jenkinsfile environment block",file:"cicd/Jenkinsfile:8–10",fw:"PCI DSS Req 3.7, 8.3 · SOC 2 CC6.1 · GDPR Art. 32 · HIPAA §164.312(a)(2)(iv)",effort:"Low",
+   issue:"DB_PASSWORD, AWS_SECRET_KEY (real AWS key format), and API_TOKEN (GitHub PAT) hardcoded in Jenkinsfile. Committed to source control. Visible to all CI/CD agents and anyone with repo read access.",
+   impact:"PCI DSS Req 3.7 — secrets must not be stored in cleartext. Treat all three as compromised and rotate immediately.",
+   remediation:`environment {\n  DB_PASSWORD    = credentials('jenkins-db-password')\n  AWS_SECRET_KEY = credentials('aws-secret-key')\n  API_TOKEN      = credentials('github-api-token')\n}\n// Rotate all three secrets NOW — assume compromised`},
+
+  {id:"C-009",sev:"CRITICAL",dom:"09",dname:"Key & Secrets Mgmt",resource:"Dockerfile",file:"docker/Dockerfile:11–12",fw:"PCI DSS Req 3.7 · SOC 2 CC6.1 · GDPR Art. 32 · HIPAA §164.312(a)(2)(iv)",effort:"Medium",
+   issue:"ENV DB_PASSWORD=[REDACTED] and ENV API_KEY=[REDACTED] baked into the Docker image. Persists in every image layer, visible in docker history, embedded in every registry push.",
+   impact:"Every image pull from any registry exposes these credentials. Cannot be rotated without rebuilding all images.",
+   remediation:`# Remove ENV secrets entirely\n# Inject at runtime via Docker secrets, K8s Secrets, or AWS SSM\n# Build-time (BuildKit):\nRUN --mount=type=secret,id=db_password \\\n    DB_PASSWORD=$(cat /run/secrets/db_password) npm install`},
+
+  {id:"C-010",sev:"CRITICAL",dom:"10",dname:"Serverless Security",resource:"aws_lambda_function_url.exposed_url",file:"terraform/serverless_api.tf:25",fw:"PCI DSS Req 6.4 · SOC 2 CC6.6 · GDPR Art. 25 · HIPAA §164.312(e)",effort:"Low",
+   issue:"authorization_type = \"NONE\" creates a public HTTPS URL with no authentication. The function also has hardcoded DB_PASSWORD and DATABASE_URL environment variables (lines 15–17).",
+   impact:"Public endpoint + hardcoded DB credentials = direct production database access from the internet.",
+   remediation:`resource "aws_lambda_function_url" "exposed_url" {\n  authorization_type = "AWS_IAM"\n  cors { allow_origins = ["https://app.example.com"] }\n}`},
+
+  {id:"C-011",sev:"CRITICAL",dom:"10",dname:"Serverless Security",resource:"google_cloud_run_service_iam_binding.public_function",file:"terraform/serverless_api.tf:38",fw:"PCI DSS Req 7 · SOC 2 CC6.6 · GDPR Art. 25 · HIPAA §164.312(e)",effort:"Low",
+   issue:"member = \"allUsers\" grants unauthenticated public invocation of the Cloud Function. Equivalent to removing all access control.",
+   impact:"Any internet user can invoke this function with no authentication. SOC 2 CC6.6 — logical access control failure.",
+   remediation:`resource "google_cloud_run_service_iam_binding" "invoker" {\n  members = ["serviceAccount:my-sa@project.iam.gserviceaccount.com"]\n  role    = "roles/run.invoker"\n  # Remove allUsers binding entirely\n}`},
+
+  {id:"C-012",sev:"CRITICAL",dom:"14",dname:"Object Storage",resource:"aws_s3_bucket_public_access_block.cardholder_data",file:"terraform/storage_encryption.tf:51–54, 75",fw:"PCI DSS Req 3.4, 7 · SOC 2 CC6.1 · GDPR Art. 5, 25 · HIPAA §164.312(a),(c)",effort:"Low",
+   issue:"All four S3 public access block settings are false. Bucket policy has Principal = \"*\" (world-readable). A bucket named cardholder_data is fully public.",
+   impact:"Cardholder data is publicly readable from the internet without authentication. Automatic PCI DSS Level 1 finding. GDPR mandatory breach notification assessment triggered.",
+   remediation:`resource "aws_s3_bucket_public_access_block" "cardholder_data" {\n  block_public_acls       = true\n  block_public_policy     = true\n  ignore_public_acls      = true\n  restrict_public_buckets = true\n}\n# Remove bucket policy Principal = "*" entirely`},
+
+  {id:"C-013",sev:"CRITICAL",dom:"20",dname:"HIPAA-Specific",resource:"aws_lambda_function.phi_processor",file:"terraform/cicd_state.tf:48–56",fw:"HIPAA §164.312(e)(1) · §164.312(e)(2)(ii)",effort:"Medium",
+   issue:"Lambda function processing PHI has no vpc_config block. Executes outside any VPC; all outbound calls traverse the public internet. No VPC PrivateLink or endpoint for S3/DynamoDB.",
+   impact:"HIPAA §164.312(e)(1) transmission security standard failure. PHI transmitted over public internet without network-level controls.",
+   remediation:`resource "aws_lambda_function" "phi_processor" {\n  vpc_config {\n    subnet_ids         = var.private_subnet_ids\n    security_group_ids = [aws_security_group.lambda_phi.id]\n  }\n}\n# Also add aws_vpc_endpoint for S3, DynamoDB, Secrets Manager`},
+
+  {id:"C-014",sev:"CRITICAL",dom:"20",dname:"HIPAA-Specific",resource:"aws_s3_bucket_versioning.phi_no_versioning",file:"terraform/cicd_state.tf:62–66",fw:"HIPAA §164.312(c)(1)",effort:"Low",
+   issue:"status = \"Disabled\" on the phi_records bucket. Cannot detect or recover from unauthorized deletion or modification of PHI.",
+   impact:"HIPAA §164.312(c)(1) — integrity controls required to corroborate PHI has not been altered or destroyed without authorization.",
+   remediation:`resource "aws_s3_bucket_versioning" "phi_records" {\n  versioning_configuration {\n    status     = "Enabled"\n    mfa_delete = "Enabled"\n  }\n}`},
+
+  // HIGH
+  {id:"H-001",sev:"HIGH",dom:"02",dname:"Encryption at Rest",resource:"aws_db_instance.unencrypted_rds · aws_rds_cluster.aurora_no_backup",file:"storage_encryption.tf:7, 20",fw:"PCI DSS Req 3.5 · GDPR Art. 25 · HIPAA §164.312(a)(2)(iv)",effort:"High",
+   issue:"storage_encrypted = false and encrypted = false. All data at rest in plaintext including tablespaces, logs, and automated backups.",
+   impact:"PCI DSS Req 3.5 failure. Encryption cannot be enabled on existing instances — requires snapshot + restore into new encrypted instance.",
+   remediation:`storage_encrypted = true\nkms_key_id        = aws_kms_key.rds_key.arn\n# Note: requires planned migration from unencrypted snapshot`},
+
+  {id:"H-002",sev:"HIGH",dom:"02",dname:"Encryption at Rest",resource:"aws_s3_bucket_versioning.cardholder",file:"storage_encryption.tf:32",fw:"PCI DSS Req 3.4, 10 · SOC 2 CC6.1",effort:"Low",
+   issue:"mfa_delete = \"Disabled\" on cardholder data bucket. Any operator with S3 write access can permanently delete versioned objects with no second factor.",
+   impact:"Permanent deletion of cardholder data records with no recovery path and no audit requirement.",
+   remediation:`versioning_configuration {\n  status     = "Enabled"\n  mfa_delete = "Enabled"\n}`},
+
+  {id:"H-003",sev:"HIGH",dom:"02",dname:"Encryption at Rest",resource:"unencrypted_rds · aurora_no_backup · critical_db",file:"storage_encryption.tf:12–13, 44–45 · cicd_state.tf:21",fw:"PCI DSS Req 12.3 · SOC 2 A1.2 · HIPAA §164.312(a)(2)(ii)",effort:"Low",
+   issue:"backup_retention_period = 0 disables automated backups. skip_final_snapshot = true means destroying these instances leaves no recovery point.",
+   impact:"Any accidental terraform destroy or production outage has zero recovery capability.",
+   remediation:`backup_retention_period   = 30\nskip_final_snapshot       = false\ndeletion_protection       = true`},
+
+  {id:"H-004",sev:"HIGH",dom:"03",dname:"Encryption in Transit",resource:"aws_cloudfront_distribution",file:"terraform/networking.tf:69",fw:"PCI DSS Req 4.2.1 · SOC 2 CC6.7 · GDPR Art. 32",effort:"Low",
+   issue:"minimum_protocol_version = \"TLSv1\" allows TLS 1.0. Deprecated in PCI DSS v3.2 (June 2018) and explicitly prohibited in v4.0. Vulnerable to POODLE, BEAST attacks.",
+   impact:"PCI DSS v4.0 Req 4.2.1 — TLS 1.0 and 1.1 are prohibited for cardholder data environments.",
+   remediation:`viewer_certificate {\n  minimum_protocol_version = "TLSv1.2_2021"\n  ssl_support_method        = "sni-only"\n}`},
+
+  {id:"H-005",sev:"HIGH",dom:"03",dname:"Encryption in Transit",resource:"Ingress.payment-ingress",file:"kubernetes/rbac.yaml:28–44",fw:"PCI DSS Req 4 · GDPR Art. 32 · HIPAA §164.312(e)(2)(ii)",effort:"Low",
+   issue:"payment.example.com Ingress has no tls: block. Payment traffic served over plain HTTP port 80. Card numbers and CVVs transmitted in plaintext.",
+   impact:"Card data readable on the network. PCI DSS Req 4 — all cardholder data transmitted over open public networks must be encrypted.",
+   remediation:`spec:\n  tls:\n  - hosts:\n    - payment.example.com\n    secretName: payment-tls-cert\n  rules: [...]`},
+
+  {id:"H-006",sev:"HIGH",dom:"05",dname:"Logging & Monitoring",resource:"aws_cloudtrail.main",file:"terraform/logging_monitoring.tf:8–9",fw:"PCI DSS Req 10.3, 10.5 · SOC 2 CC7.2 · GDPR Art. 33 · HIPAA §164.312(b)",effort:"Low",
+   issue:"is_multi_region_trail = false — API activity in non-default regions not logged. enable_log_file_validation = false — logs can be tampered with undetected.",
+   impact:"PCI DSS Req 10 total failure. Tamper-evident audit trail absent.",
+   remediation:`is_multi_region_trail         = true\nenable_log_file_validation    = true\nkms_key_id                    = aws_kms_key.cloudtrail.arn`},
+
+  {id:"H-007",sev:"HIGH",dom:"05",dname:"Logging & Monitoring",resource:"aws_cloudwatch_log_group.ehr_access · gdpr_user_activity",file:"logging_monitoring.tf:22 · cicd_state.tf:44",fw:"GDPR Art. 5 · HIPAA §164.312(b) · SOC 2 CC7.3",effort:"Low",
+   issue:"retention_in_days = 0 on EHR access logs and GDPR user activity logs. Infinite retention with no deletion policy.",
+   impact:"GDPR Art. 5 storage limitation principle violation. Accumulating personal data with no deletion creates breach liability.",
+   remediation:`retention_in_days = 90  # or per data classification policy`},
+
+  {id:"H-008",sev:"HIGH",dom:"07",dname:"CI/CD & Change Control",resource:"terraform backend s3",file:"terraform/cicd_state.tf:10–11",fw:"PCI DSS Req 3.5 · SOC 2 CC6.1 · GDPR Art. 25",effort:"Low",
+   issue:"encrypt = false stores Terraform state in plaintext S3. No dynamodb_table for state locking — concurrent applies can corrupt state.",
+   impact:"State files contain all resource IDs, ARNs, connection strings, and sensitive attribute values — all in plaintext.",
+   remediation:`backend "s3" {\n  encrypt        = true\n  kms_key_id     = "arn:aws:kms:...:key/KEY_ID"\n  dynamodb_table = "tf-state-lock"\n}`},
+
+  {id:"H-009",sev:"HIGH",dom:"07",dname:"CI/CD & Change Control",resource:"GitHub Actions workflow",file:"cicd/.github/workflows/deploy.yml:18, 21, 27",fw:"PCI DSS Req 6.3.3 · SOC 2 CC8.1 · GDPR Art. 25",effort:"Low",
+   issue:"Three Actions pinned to mutable refs: checkout@main, configure-aws-credentials@master, deploy-action@HEAD. Supply chain compromise → arbitrary code execution in production CI.",
+   impact:"@HEAD resolves to latest commit at runtime — any push to the upstream repo executes in your production pipeline.",
+   remediation:`# Pin to immutable SHA:\n- uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2`},
+
+  {id:"H-010",sev:"HIGH",dom:"07",dname:"CI/CD & Change Control",resource:"GitHub Actions deploy workflow",file:"cicd/.github/workflows/deploy.yml:11",fw:"PCI DSS Req 7 · SOC 2 CC6.3",effort:"Low",
+   issue:"permissions: write-all grants GITHUB_TOKEN write access to all scopes: contents, packages, deployments, issues, PRs, secrets.",
+   impact:"A compromised step can exfiltrate the token and modify all repository content, create releases, access all secrets.",
+   remediation:`permissions:\n  id-token: write\n  contents: read\n  deployments: write`},
+
+  {id:"H-011",sev:"HIGH",dom:"08",dname:"Availability",resource:"aws_db_instance.single_az_prod",file:"terraform/logging_monitoring.tf:39, 51–52",fw:"SOC 2 A1.1, A1.2 · PCI DSS Req 12.3 · HIPAA §164.312(a)(2)(ii)",effort:"Medium",
+   issue:"multi_az = false — single AZ hardware failure takes production database offline. deletion_protection = false + skip_final_snapshot = true — can be accidentally destroyed with no recovery.",
+   impact:"SOC 2 A1.2 requires system to operate as committed during incidents. No RTO/RPO capability.",
+   remediation:`multi_az              = true\ndeletion_protection   = true\nskip_final_snapshot   = false\nbackup_retention_period = 7`},
+
+  {id:"H-012",sev:"HIGH",dom:"09",dname:"Key & Secrets Mgmt",resource:"Multiple aws_db_instance resources",file:"networking.tf:49 · logging_monitoring.tf:41,50,62,72 · cicd_state.tf:21 · serverless_api.tf:100 · iam.tf:75 · storage_encryption.tf:11,43",fw:"PCI DSS Req 3.7, 8.3 · SOC 2 CC6.1 · GDPR Art. 32 · HIPAA §164.312(a)(2)(iv)",effort:"Medium",
+   issue:"10 database password and master_password values hardcoded as plaintext strings across 5 .tf files. Visible to anyone with repository access.",
+   impact:"Committed to git history — rotation requires finding every reference in all commits.",
+   remediation:`data "aws_secretsmanager_secret_version" "db_password" {\n  secret_id = "prod/db/password"\n}\nresource "aws_db_instance" "example" {\n  password = data.aws_secretsmanager_secret_version.db_password.secret_string\n}`},
+
+  {id:"H-013",sev:"HIGH",dom:"11",dname:"Database Security",resource:"aws_elasticache_replication_group",file:"terraform/logging_monitoring.tf:81–82",fw:"PCI DSS Req 2.2, 4 · SOC 2 CC6.1 · HIPAA §164.312(e)(2)(ii)",effort:"Medium",
+   issue:"No auth_token (unauthenticated Redis) and transit_encryption_enabled = false. Any workload in the same VPC can read/write cache entries with no credentials.",
+   impact:"Redis cache (potentially containing session tokens, PII) accessible without authentication.",
+   remediation:`auth_token                 = random_password.redis_auth.result\ntransit_encryption_enabled = true\nat_rest_encryption_enabled = true`},
+
+  {id:"H-014",sev:"HIGH",dom:"12",dname:"API Gateway & WAF",resource:"aws_api_gateway_rest_api.unprotected_api · aws_apigatewayv2_api.http_api · wide_cors",file:"terraform/serverless_api.tf:42–58",fw:"PCI DSS Req 1.4, 6.4 · SOC 2 CC6.6 · GDPR Art. 25 · HIPAA §164.312(e)",effort:"Medium",
+   issue:"Three API Gateways with no aws_wafv2_web_acl_association. No rate limiting, no OWASP rules, no IP blocking. wide_cors has allow_origins = [\"*\"].",
+   impact:"PCI DSS Req 6.4.2 — web-facing applications must have a WAF detecting/preventing web-based attacks.",
+   remediation:`resource "aws_wafv2_web_acl_association" "api" {\n  resource_arn = aws_api_gateway_stage.prod.arn\n  web_acl_arn  = aws_wafv2_web_acl.main.arn\n}`},
+
+  {id:"H-015",sev:"HIGH",dom:"15",dname:"Message Queue & Events",resource:"aws_sqs_queue.unencrypted_queue · aws_sns_topic.unencrypted_topic · aws_kinesis_stream.unencrypted",file:"terraform/logging_monitoring.tf:87–103",fw:"PCI DSS Req 3.5 · SOC 2 CC6.1 · GDPR Art. 32 · HIPAA §164.312(e)",effort:"Low",
+   issue:"sqs_managed_sse_enabled = false, no kms_master_key_id on SNS, encryption_type = \"NONE\" on Kinesis. Messages containing PII/PHI stored and transmitted in plaintext.",
+   impact:"All three messaging services unencrypted. Any data-in-transit or at-rest interception exposes sensitive content.",
+   remediation:`# SQS\nsqs_managed_sse_enabled = true\n# SNS\nkms_master_key_id = aws_kms_key.sns.id\n# Kinesis\nencryption_type = "KMS"\nkms_key_id      = aws_kms_key.kinesis.id`},
+
+  {id:"H-016",sev:"HIGH",dom:"17",dname:"Cross-Account Trust",resource:"aws_iam_role cross-account trust policy",file:"terraform/iam.tf:50–51",fw:"PCI DSS Req 7, 8 · SOC 2 CC6.2 · HIPAA §164.312(a)",effort:"Low",
+   issue:"AssumeRole with Principal = account root and no Condition block. Any IAM principal in account 123456789012 can assume this role. Vulnerable to confused deputy.",
+   impact:"A compromised identity in the trusted account can escalate to this role's permissions.",
+   remediation:`condition {\n  test     = "StringEquals"\n  variable = "sts:ExternalId"\n  values   = [var.external_id]  # random UUID shared out-of-band\n}`},
+
+  {id:"H-017",sev:"HIGH",dom:"17",dname:"Cross-Account Trust",resource:"aws_iam_openid_connect_provider.github",file:"terraform/iam.tf:84–86",fw:"PCI DSS Req 8 · SOC 2 CC6.2 · HIPAA §164.312(a)",effort:"Low",
+   issue:"client_id_list = [\"*\"] on OIDC provider. Any OIDC audience can present tokens. Should be scoped to specific GitHub org/repo audience.",
+   impact:"Tokens from unintended OIDC issuers may be able to authenticate.",
+   remediation:`client_id_list = ["sts.amazonaws.com"]\n# Add trust policy condition:\n# token.actions.githubusercontent.com:sub = "repo:org/repo:ref:refs/heads/main"`},
+
+  {id:"H-018",sev:"HIGH",dom:"20",dname:"HIPAA-Specific",resource:"aws_iam_user.shared_service_account",file:"terraform/cicd_state.tf:70, 75, 80",fw:"HIPAA §164.312(a)(2)(i)",effort:"Medium",
+   issue:"shared_service_account is referenced by multiple services with the same access key. HIPAA requires each system user to have a unique identifier for individual accountability.",
+   impact:"Shared credentials prevent attribution — if misused, impossible to determine which service or individual performed the action.",
+   remediation:`# Replace with IAM roles + instance profiles or workload identity\n# Each service gets its own role with minimum required permissions\n# No static credentials at all (use OIDC federation)`},
+
+  // MEDIUM
+  {id:"M-001",sev:"MEDIUM",dom:"01",dname:"Network Security",resource:"azurerm_network_security_group.web",file:"terraform/networking.tf:111",fw:"PCI DSS Req 1 · SOC 2 CC6.6",effort:"Low",
+   issue:"source_address_prefix = \"*\" on Azure NSG rule allows traffic from any source to reach the web tier.",
+   impact:"Azure NSG wildcard is equivalent to AWS 0.0.0.0/0 — no network-level filtering.",
+   remediation:`source_address_prefix = "10.0.0.0/8"  # scope to internal CIDR`},
+
+  {id:"M-002",sev:"MEDIUM",dom:"04",dname:"IAM & Access Control",resource:"google_project_iam_binding",file:"terraform/iam.tf:93",fw:"PCI DSS Req 7 · SOC 2 CC6.3 · GDPR Art. 25",effort:"Medium",
+   issue:"role = \"roles/owner\" assigned at project level. Owner role grants full control including IAM policy modification.",
+   impact:"Equivalent to root access in GCP. Should use custom roles with minimum required permissions.",
+   remediation:`role = "roles/viewer"  # or a custom role with specific permissions`},
+
+  {id:"M-003",sev:"MEDIUM",dom:"04",dname:"IAM & Access Control",resource:"google_service_account_key.app_key",file:"terraform/iam.tf:98",fw:"PCI DSS Req 8 · SOC 2 CC6.1 · GDPR Art. 25",effort:"Medium",
+   issue:"google_service_account_key creates a long-lived user-managed key. These keys do not auto-rotate and must be manually managed.",
+   impact:"Long-lived static credentials are a persistent risk. Google recommends Workload Identity Federation instead.",
+   remediation:`# Use Workload Identity Federation — no static keys\nresource "google_iam_workload_identity_pool" "github" {...}\n# google_service_account_key.app_key should be removed`},
+
+  {id:"M-004",sev:"MEDIUM",dom:"06",dname:"Container & Workload",resource:"Deployment.payment-service · ehr-sidecar",file:"kubernetes/deployment.yaml:28, 65",fw:"PCI DSS Req 6.3.3 · SOC 2 CC8.1 · GDPR Art. 25",effort:"Low",
+   issue:"image: payment-service:latest and ehr-frontend:latest use mutable :latest tags. Image can change silently between deployments.",
+   impact:"Supply chain risk — a compromised image registry update deploys without any change review.",
+   remediation:`image: payment-service:sha256-abc123def456...  # immutable digest\n# or use a specific version tag: payment-service:v2.3.1`},
+
+  {id:"M-005",sev:"MEDIUM",dom:"08",dname:"Availability",resource:"Deployment.payment-service · ehr-frontend",file:"kubernetes/deployment.yaml:9, 52",fw:"SOC 2 A1.1 · PCI DSS Req 12.3 · HIPAA §164.312(a)(2)(ii)",effort:"Low",
+   issue:"replicas: 1 on both payment-service and ehr-frontend deployments. A single pod failure takes the entire service offline.",
+   impact:"SOC 2 A1.1 — system components should be available as committed. Single replica = zero fault tolerance.",
+   remediation:`spec:\n  replicas: 3  # minimum 2, recommend 3 for HA\n  # Also add PodDisruptionBudget`},
+
+  {id:"M-006",sev:"MEDIUM",dom:"06",dname:"Container & Workload",resource:"Deployment.payment-service containers",file:"kubernetes/deployment.yaml",fw:"SOC 2 CC7.1 · PCI DSS Req 2",effort:"Low",
+   issue:"No resource limits: block defined on containers. A resource-exhaustion attack or runaway process can starve all other pods on the node.",
+   impact:"Noisy-neighbour DoS. Kubernetes cannot enforce fair scheduling without resource limits.",
+   remediation:`resources:\n  requests:\n    cpu: "250m"\n    memory: "256Mi"\n  limits:\n    cpu: "500m"\n    memory: "512Mi"`},
+
+  {id:"M-007",sev:"MEDIUM",dom:"11",dname:"Database Security",resource:"aws_db_instance.default_params",file:"terraform/logging_monitoring.tf:60",fw:"PCI DSS Req 2.2 · SOC 2 CC6.1 · HIPAA §164.312(a)",effort:"Low",
+   issue:"parameter_group_name = \"default.mysql8.0\" uses the AWS default parameter group. Default groups cannot be modified and may have insecure defaults (e.g., general_log=0, slow_query_log=0).",
+   impact:"PCI DSS Req 2.2 — systems must not use vendor default settings for security parameters.",
+   remediation:`resource "aws_db_parameter_group" "prod" {\n  parameter { name = "general_log" value = "1" }\n  parameter { name = "slow_query_log" value = "1" }\n}`},
+
+  {id:"M-008",sev:"MEDIUM",dom:"11",dname:"Database Security",resource:"aws_db_instance.default_params",file:"terraform/logging_monitoring.tf:63",fw:"PCI DSS Req 6.3 · SOC 2 CC7.1",effort:"Low",
+   issue:"auto_minor_version_upgrade = false prevents automatic security patch application. Minor version updates include security CVE fixes.",
+   impact:"Known database CVEs will not be patched automatically, increasing attack surface over time.",
+   remediation:`auto_minor_version_upgrade = true`},
+
+  {id:"M-009",sev:"MEDIUM",dom:"09",dname:"Key & Secrets Mgmt",resource:"aws_kms_key.default_key · aws_kms_key.phi_key",file:"terraform/iam.tf:60, 67",fw:"PCI DSS Req 3.7 · SOC 2 CC6.1 · HIPAA §164.312(a)(2)(iv)",effort:"Low",
+   issue:"enable_key_rotation = false on both KMS keys. PCI DSS requires cryptographic keys to be rotated at least annually.",
+   impact:"PCI DSS Req 3.7.5 — key rotation is a mandatory control. Non-rotating keys accumulate risk over time.",
+   remediation:`enable_key_rotation = true  # enables annual auto-rotation`},
+
+  {id:"M-010",sev:"MEDIUM",dom:"09",dname:"Key & Secrets Mgmt",resource:"aws_kms_key.default_key",file:"terraform/iam.tf:61",fw:"PCI DSS Req 3.7 · SOC 2 CC6.1",effort:"Low",
+   issue:"deletion_window_in_days = 3 — minimum waiting period before key is permanently deleted. 3-day window is dangerously short; accidental deletion is nearly unrecoverable.",
+   impact:"Accidental terraform destroy deletes the key in 3 days, making all data encrypted with it permanently unrecoverable.",
+   remediation:`deletion_window_in_days = 30  # use maximum (30) for production keys`},
+
+  {id:"M-011",sev:"MEDIUM",dom:"20",dname:"HIPAA-Specific",resource:"aws_s3_bucket.ehr_records · phi_records · untagged_phi",file:"storage_encryption.tf:58 · cicd_state.tf:58 · serverless_api.tf:91",fw:"HIPAA §164.312(a)(2)(iv)",effort:"Medium",
+   issue:"PHI/EHR-named S3 buckets have no kms_key_id assignment. No dedicated CMK means PHI is encrypted with AWS-managed keys only — no customer control over key policy or access.",
+   impact:"HIPAA §164.312(a)(2)(iv) — encryption and decryption mechanisms must be under customer control for PHI.",
+   remediation:`resource "aws_s3_bucket_server_side_encryption_configuration" "ehr" {\n  rule {\n    apply_server_side_encryption_by_default {\n      sse_algorithm     = "aws:kms"\n      kms_master_key_id = aws_kms_key.phi_key.arn\n    }\n  }\n}`},
+
+  {id:"M-012",sev:"MEDIUM",dom:"19",dname:"GDPR-Specific",resource:"aws_s3_bucket_replication_configuration.gdpr_violation",file:"terraform/cicd_state.tf:28–36",fw:"GDPR Art. 44",effort:"High",
+   issue:"S3 replication configured to a US destination bucket with no adequacy decision, standard contractual clauses, or binding corporate rules documented.",
+   impact:"GDPR Art. 44 — transfers of personal data to third countries require appropriate safeguards. Replication to US without SCCs = Art. 44 violation.",
+   remediation:`# Either:\n# 1. Restrict replication to EU regions only\n# 2. Implement AWS SCCs via Data Processing Agreement\n# 3. Use EU-based storage for personal data`},
+
+  // LOW
+  {id:"L-001",sev:"LOW",dom:"20",dname:"HIPAA-Specific",resource:"All management interfaces",file:"terraform/ (all files)",fw:"HIPAA §164.312(a)(2)(iii)",effort:"Low",
+   issue:"No session_timeout, idle_timeout, or timeout_in_minutes settings found anywhere in the IaC. Management console sessions may not auto-terminate.",
+   impact:"HIPAA §164.312(a)(2)(iii) — automatic logoff required after a period of inactivity.",
+   remediation:`# AWS IAM password policy:\nmax_session_duration = 3600  # 1 hour on IAM roles\n# AWS SSO: configure session duration in AWS Identity Center`},
+
+  {id:"L-002",sev:"LOW",dom:"14",dname:"Object Storage",resource:"aws_s3_bucket_versioning.ehr",file:"storage_encryption.tf:62–65",fw:"HIPAA §164.312(c)(1) · PCI DSS Req 10",effort:"Low",
+   issue:"EHR records bucket has versioning enabled but mfa_delete is not set to Enabled. Versioned objects can still be permanently deleted without MFA.",
+   impact:"Partial integrity control — versioning exists but deletion protection is incomplete.",
+   remediation:`versioning_configuration {\n  status     = "Enabled"\n  mfa_delete = "Enabled"\n}`},
+
+  {id:"L-003",sev:"LOW",dom:"05",dname:"Logging & Monitoring",resource:"aws_lb.prod_alb",file:"terraform/logging_monitoring.tf:28–32",fw:"PCI DSS Req 10 · HIPAA §164.312(b)",effort:"Low",
+   issue:"ALB access_logs block exists but bucket is not configured to encrypt logs at rest with a CMK.",
+   impact:"Access logs containing IP addresses and request paths stored without encryption.",
+   remediation:`# Ensure the log bucket has server_side_encryption_configuration\n# with kms_master_key_id pointing to a CMK`},
+
+  {id:"L-004",sev:"LOW",dom:"13",dname:"DNS & Certificates",resource:"aws_route53_hosted_zone",file:"terraform/ (not found)",fw:"PCI DSS Req 4 · SOC 2 CC6.7",effort:"Medium",
+   issue:"No aws_route53_hosted_zone_dnssec resource found. DNSSEC is not enabled on Route 53 hosted zones.",
+   impact:"DNS spoofing attacks could redirect traffic. Low severity as TLS provides a compensating control.",
+   remediation:`resource "aws_route53_hosted_zone_dnssec" "main" {\n  hosted_zone_id = aws_route53_zone.main.id\n}`},
+
+  {id:"L-005",sev:"LOW",dom:"18",dname:"Data Classification",resource:"All compute/storage/database resources (17 identified)",file:"terraform/ (all files)",fw:"PCI DSS Req 3 · SOC 2 C1.1 · GDPR Art. 5, 30 · HIPAA §164.312(a)",effort:"High",
+   issue:"Zero tags found across all 17 compute, storage, and database resources. No Environment, DataClassification, Owner, or Compliance tags present.",
+   impact:"Cannot automate data classification, cost attribution, or compliance scoping. GDPR Art. 30 records of processing activities requires knowing what data is where.",
+   remediation:`# Add a local block and merge tags on all resources:\nlocals {\n  required_tags = {\n    Environment      = var.environment\n    DataClassification = "Confidential"\n    Owner            = "platform-team"\n    Compliance       = "PCI-DSS,HIPAA"\n  }\n}\ntags = merge(local.required_tags, var.extra_tags)`},
+];
+
+// ─── Render Findings Table ─────────────────────────────────────────────────
+function buildTable() {
+  const tbody = document.getElementById('findings-body');
+  FINDINGS.forEach((f, i) => {
+    // Main row
+    const tr = document.createElement('tr');
+    tr.className = 'finding-row';
+    tr.dataset.id = f.id;
+    tr.dataset.sev = f.sev;
+    tr.dataset.dom = f.dom;
+    tr.dataset.text = (f.id+' '+f.resource+' '+f.file+' '+f.issue+' '+f.dname).toLowerCase();
+    tr.onclick = () => toggleDetail(f.id);
+    tr.innerHTML = `
+      <td><strong style="font-family:'SF Mono',monospace;font-size:12px">${f.id}</strong></td>
+      <td><span class="badge b-${f.sev}">${f.sev}</span></td>
+      <td style="white-space:nowrap"><span style="color:#94a3b8;font-size:11px">${f.dom}</span> ${f.dname}</td>
+      <td>
+        <div style="font-size:12px;font-weight:600;color:#334155">${escHtml(f.resource)}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:2px">${escHtml(f.file)}</div>
+      </td>
+      <td style="font-size:11px;color:#64748b;max-width:200px">${escHtml(f.fw)}</td>
+      <td><span class="effort e-${f.effort}">${f.effort}</span></td>
+      <td><button class="expand-btn" id="btn-${f.id}">▶ Details</button></td>`;
+    tbody.appendChild(tr);
+
+    // Detail row
+    const dr = document.createElement('tr');
+    dr.className = 'detail-row';
+    dr.innerHTML = `<td colspan="7"><div class="detail-inner" id="detail-${f.id}">
+      <p><strong>Issue:</strong> ${escHtml(f.issue)}</p>
+      <p><strong>Audit Impact:</strong> ${escHtml(f.impact)}</p>
+      <p><strong>Remediation:</strong></p>
+      <pre>${escHtml(f.remediation)}</pre>
+    </div></td>`;
+    tbody.appendChild(dr);
+  });
+  updateCount();
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toggleDetail(id) {
+  const d = document.getElementById('detail-'+id);
+  const b = document.getElementById('btn-'+id);
+  const open = d.classList.toggle('open');
+  b.textContent = open ? '▼ Details' : '▶ Details';
+}
+
+function jumpTo(id) {
+  // Clear filters
+  document.getElementById('sev-f').value = '';
+  document.getElementById('dom-f').value = '';
+  document.getElementById('search-f').value = '';
+  applyFilters();
+  // Open and scroll to finding
+  setTimeout(() => {
+    const row = document.querySelector(`[data-id="${id}"]`);
+    if (row) {
+      row.scrollIntoView({behavior:'smooth', block:'center'});
+      const d = document.getElementById('detail-'+id);
+      const b = document.getElementById('btn-'+id);
+      d.classList.add('open');
+      b.textContent = '▼ Details';
+      row.style.background = '#fef9c3';
+      setTimeout(() => { row.style.background = ''; }, 2000);
+    }
+  }, 100);
+}
+
+function applyFilters() {
+  const sev   = document.getElementById('sev-f').value;
+  const dom   = document.getElementById('dom-f').value;
+  const query = document.getElementById('search-f').value.toLowerCase();
+  let shown = 0;
+
+  document.querySelectorAll('.finding-row').forEach(row => {
+    const matchSev = !sev   || row.dataset.sev === sev;
+    const matchDom = !dom   || row.dataset.dom === dom;
+    const matchQ   = !query || row.dataset.text.includes(query);
+    const show = matchSev && matchDom && matchQ;
+
+    row.style.display = show ? '' : 'none';
+    const detail = row.nextElementSibling;
+    if (detail && detail.classList.contains('detail-row')) {
+      if (!show) {
+        detail.style.display = 'none';
+        const d = detail.querySelector('.detail-inner');
+        if (d) d.classList.remove('open');
+      } else {
+        detail.style.display = '';
+      }
+    }
+    if (show) shown++;
+  });
+  updateCount(shown);
+}
+
+function updateCount(shown) {
+  const total = FINDINGS.length;
+  const n = shown !== undefined ? shown : total;
+  document.getElementById('filter-count').textContent =
+    `Showing ${n} of ${total} findings`;
+}
+
+// ─── Init ──────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', buildTable);
+</script>
+
+<!-- IAC_AUDIT_CI: {"critical":14,"high":18,"medium":12,"low":5,"exit_code":1,"scores":{"pci":0,"soc2":0,"gdpr":0,"hipaa":0}} -->
+</body>
+</html>

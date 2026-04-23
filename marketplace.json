@@ -1,0 +1,16 @@
+{
+  "type": "marketplace",
+  "name": "iac-compliance-audit",
+  "description": "Claude Code skill for pre-audit IaC compliance scanning across PCI DSS v4.0, SOC 2 Type 2, GDPR, HIPAA, ISO 27001:2022, NIST CSF 2.0, NIST SP 800-53 Rev 5, CIS Controls v8, and OWASP Top 10 2021. Audits 22 security domains across Terraform, Kubernetes, Ansible, Packer, GitHub Actions, GitLab CI, Azure Pipelines, CircleCI, Cloud Build, Dockerfiles, CloudFormation, Bicep/ARM, Kustomize, ArgoCD, Pulumi, and live cloud workloads on AWS, GCP, and Azure.",
+  "owner": {
+    "name": "Gokulnath Gopinath",
+    "github": "goku-70"
+  },
+  "plugins": [
+    {
+      "name": "iac-audit",
+      "description": "Pre-audit compliance scanner for IaC. Checks misconfigurations, IAM permissions, encryption at rest/transit, network controls, logging, container security, CI/CD pipeline controls, vulnerability management, and configuration baseline hardening across 22 domains mapped to PCI DSS, SOC 2, GDPR, HIPAA, ISO 27001, NIST CSF, NIST 800-53, CIS Controls v8, and OWASP Top 10.",
+      "source": "https://github.com/goku-70/iac-compliance-audit"
+    }
+  ]
+}

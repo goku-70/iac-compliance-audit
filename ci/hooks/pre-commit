@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+# pre-commit — fast grep-based IaC security check (no Claude API required)
+# Blocks commits containing CRITICAL patterns: hardcoded secrets & open firewall rules.
+# The full compliance audit runs in pre-push (Claude) and in CI/CD.
+#
+# Install:  bash ci/install-hooks.sh
+# Skip:     git commit --no-verify  (use sparingly — CI will still catch issues)
+
+set -euo pipefail
+
+RED='\033[0;31m'; YELLOW='\033[0;33m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; NC='\033[0m'
+
+ERRORS=0
+WARNINGS=0
+
+log_err()  { echo -e "${RED}  [BLOCK]${NC} $*";  ERRORS=$((ERRORS + 1));   }
+log_warn() { echo -e "${YELLOW}  [WARN]${NC} $*";  WARNINGS=$((WARNINGS + 1)); }
+
+echo -e "${CYAN}[pre-commit]${NC} Running IaC security checks on staged files…"
+
+# Get staged files only
+STAGED=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null) || STAGED=""
+if [[ -z "$STAGED" ]]; then
+  echo -e "${GREEN}[pre-commit]${NC} No staged files. Skipping."
+  exit 0
+fi
+
+# Write staged content to a temp dir — use a distinct name to avoid clobbering $TMPDIR
+TMP_SCAN_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_SCAN_DIR"' EXIT
+
+while IFS= read -r f; do
+  [[ -z "$f" ]] && continue
+  # Create parent directories
+  mkdir -p "$TMP_SCAN_DIR/$(dirname "$f")"
+  git show ":$f" > "$TMP_SCAN_DIR/$f" 2>/dev/null || true
+done <<< "$STAGED"
+
+# ─── Helper: grep staged content ──────────────────────────────────────────────
+# Avoids xargs -r (GNU-only; absent on macOS) by using plain grep -r on the tmpdir.
+
+staged_grep() {
+  # Usage: staged_grep <include_patterns_array> <grep_expression>
+  # Returns: matching lines, empty string if nothing found
+  local includes=() expression=""
+  while [[ $# -gt 0 && "$1" != "--" ]]; do
+    includes+=("--include=$1"); shift
+  done
+  shift  # consume "--"
+  expression="$1"
+  grep -rn "${includes[@]}" -E "$expression" "$TMP_SCAN_DIR" 2>/dev/null || true
+}
+
+# ─── CRITICAL: Hardcoded secrets ──────────────────────────────────────────────
+
+echo ""
+echo "  Checking for hardcoded secrets…"
+
+# AWS secret access key — actual 40-char base64 value
+HITS=$(staged_grep "*.tf" "*.hcl" "Jenkinsfile" "Dockerfile" "*.yml" "*.yaml" -- \
+  'AWS_SECRET_ACCESS_KEY\s*=\s*"[A-Za-z0-9/+=]{20,}"' \
+  | grep -v 'var\.\|data\.\|variables' || true)
+if [[ -n "$HITS" ]]; then
+  log_err "AWS_SECRET_ACCESS_KEY hardcoded in staged files"
+fi
+
+# Hardcoded password literal (4+ chars, not a variable reference)
+PASS_HITS=$(staged_grep "*.tf" "*.hcl" -- \
+  'password\s*=\s*"[^"${}]{4,}"' \
+  | grep -v 'var\.\|data\.\|variables\|#' | head -5 || true)
+if [[ -n "$PASS_HITS" ]]; then
+  log_err "Hardcoded password value in Terraform:"
+  while IFS= read -r line; do
+    REDACTED=$(echo "$line" | sed -E 's/(password\s*=\s*")[^"]*/\1[REDACTED]/')
+    echo "    $REDACTED"
+  done <<< "$PASS_HITS"
+fi
+
+# GitHub tokens
+HITS=$(staged_grep "*.tf" "*.hcl" "Jenkinsfile" "*.yml" "*.yaml" -- \
+  'ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{82}' \
+  | grep -v '#' || true)
+if [[ -n "$HITS" ]]; then
+  log_err "GitHub PAT token hardcoded in staged files"
+fi
+
+# Secret baked into Dockerfile ENV
+HITS=$(staged_grep "Dockerfile" -- \
+  'ENV\s+(DB_PASSWORD|API_KEY|SECRET|TOKEN|PRIVATE_KEY)\s*=' \
+  | grep -v 'ARG\|#' || true)
+if [[ -n "$HITS" ]]; then
+  log_err "Secret baked into Dockerfile ENV instruction — use build args or a secrets manager"
+fi
+
+# ─── CRITICAL: Wide-open firewall rules ───────────────────────────────────────
+
+echo "  Checking for open network rules…"
+
+# SSH (port 22) open to the world — must match both port 22 AND 0.0.0.0/0 in same file
+SSH_FILES=$(staged_grep "*.tf" "*.hcl" -- '0\.0\.0\.0/0' \
+  | awk -F: '{print $1}' | sort -u || true)
+for f in $SSH_FILES; do
+  if grep -qE 'from_port.*22|to_port.*22|port.*=.*22' "$f" 2>/dev/null; then
+    log_err "SSH (port 22) open to 0.0.0.0/0 in: ${f#$TMP_SCAN_DIR/}"
+  fi
+done
+
+# All-traffic rule open to the world
+HITS=$(staged_grep "*.tf" "*.hcl" -- 'protocol\s*=\s*"-1"' \
+  | grep '0\.0\.0\.0/0\|cidr_blocks' || true)
+if [[ -n "$HITS" ]]; then
+  log_err "All-traffic rule (protocol=-1) open to 0.0.0.0/0"
+fi
+
+# ─── CRITICAL: Privileged container ──────────────────────────────────────────
+
+echo "  Checking container security…"
+
+HITS=$(staged_grep "*.yaml" "*.yml" -- 'privileged:\s*true' \
+  | grep -v '#' || true)
+if [[ -n "$HITS" ]]; then
+  log_err "Privileged container defined in Kubernetes manifest"
+fi
+
+HITS=$(staged_grep "*.yaml" "*.yml" -- 'runAsUser:\s*0' \
+  | grep -v '#' || true)
+if [[ -n "$HITS" ]]; then
+  log_err "Container configured to run as root (runAsUser: 0)"
+fi
+
+# ─── WARNINGS (non-blocking) ──────────────────────────────────────────────────
+
+echo "  Checking for high-severity patterns (warnings)…"
+
+HITS=$(staged_grep "*.yml" "*.yaml" -- 'uses:.*@(main|master|HEAD)' \
+  | grep -v '#' || true)
+if [[ -n "$HITS" ]]; then
+  log_warn "Unpinned GitHub Action (@main/@master/@HEAD) — pin to a SHA for supply-chain safety"
+fi
+
+HITS=$(staged_grep "*.tf" "*.hcl" -- 'publicly_accessible\s*=\s*true' || true)
+if [[ -n "$HITS" ]]; then
+  log_warn "publicly_accessible = true on a database resource"
+fi
+
+HITS=$(staged_grep "*.tf" "*.hcl" -- 'encrypt\s*=\s*false' || true)
+if [[ -n "$HITS" ]]; then
+  log_warn "Terraform state backend encrypt = false"
+fi
+
+# ─── Result ───────────────────────────────────────────────────────────────────
+
+echo ""
+if [[ "$ERRORS" -gt 0 ]]; then
+  echo -e "${RED}[pre-commit] BLOCKED — $ERRORS critical issue(s) found above.${NC}"
+  echo -e "${YELLOW}             To skip this check (not recommended): git commit --no-verify${NC}"
+  echo -e "${YELLOW}             CI/CD will still run the full audit on push.${NC}"
+  exit 1
+fi
+
+if [[ "$WARNINGS" -gt 0 ]]; then
+  echo -e "${YELLOW}[pre-commit] $WARNINGS warning(s) found — commit allowed. Review before merging.${NC}"
+fi
+
+echo -e "${GREEN}[pre-commit] Checks passed.${NC}"
+echo -e "${CYAN}             Full compliance audit will run in CI/CD on push.${NC}"
+exit 0

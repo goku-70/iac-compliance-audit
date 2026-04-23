@@ -1,0 +1,197 @@
+name: IaC Compliance Audit
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Triggers
+# ──────────────────────────────────────────────────────────────────────────────
+on:
+  # Run on every PR that touches IaC files
+  pull_request:
+    paths:
+      - "**.tf"
+      - "**.hcl"
+      - "**.yaml"
+      - "**.yml"
+      - "**/Dockerfile"
+      - "**/Jenkinsfile"
+  # Run on push to main/master — IaC files only (excludes workflow/action yml changes
+  # to prevent the audit from re-triggering itself on every CI fix commit)
+  push:
+    branches: [main, master]
+    paths:
+      - "**.tf"
+      - "**.hcl"
+      - "**/Dockerfile"
+      - "**/Jenkinsfile"
+  # Manual trigger with customizable parameters
+  workflow_dispatch:
+    inputs:
+      scan-path:
+        description: "Directory to scan (relative to repo root)"
+        default: "."
+        required: false
+      framework:
+        description: "Compliance framework (PCI-DSS | SOC2 | GDPR | HIPAA | ALL)"
+        default: "ALL"
+        required: false
+      fail-on:
+        description: "Block on this severity (CRITICAL | HIGH | MEDIUM | ALL | NONE)"
+        default: "CRITICAL"
+        required: false
+      mode:
+        description: "Audit mode (static | live | all)"
+        default: "static"
+        required: false
+  # Nightly full audit on scheduled cron
+  schedule:
+    - cron: "0 2 * * 1"  # 02:00 UTC every Monday
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Permissions — least-privilege
+# ──────────────────────────────────────────────────────────────────────────────
+permissions:
+  contents: read        # checkout
+  pull-requests: write  # post PR comment
+  actions: read         # read artifact URLs
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Concurrency — cancel in-progress runs on the same PR/branch
+# ──────────────────────────────────────────────────────────────────────────────
+concurrency:
+  group: iac-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 1: Static IaC audit (always runs — no cloud credentials needed)
+  # ────────────────────────────────────────────────────────────────────────────
+  static-audit:
+    name: Static IaC Compliance Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run IaC Compliance Audit
+        id: audit
+        uses: ./.github/actions/iac-audit
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          scan-path: ${{ github.event.inputs.scan-path || '.' }}
+          mode: ${{ github.event.inputs.mode || 'static' }}
+          framework: ${{ github.event.inputs.framework || 'ALL' }}
+          fail-on: ${{ github.event.inputs.fail-on || 'CRITICAL' }}
+          output-format: html
+          severity: ALL
+
+      # Fail the job if the audit found CRITICAL issues
+      - name: Check audit result
+        if: always()
+        run: |
+          EXIT="${{ steps.audit.outputs.exit-code }}"
+          if [[ "$EXIT" == "1" ]]; then
+            echo "::error::IaC Compliance Audit FAILED — CRITICAL/HIGH findings detected."
+            echo "::error::Download the 'iac-audit-report' artifact for the full HTML report."
+            exit 1
+          fi
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 2: Live AWS audit (only on push to main — requires AWS credentials)
+  # ────────────────────────────────────────────────────────────────────────────
+  live-aws-audit:
+    name: Live AWS Compliance Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Only run on main branch push and only if AWS credentials are configured
+    if: |
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
+      vars.ENABLE_LIVE_AWS_AUDIT == 'true'
+    needs: static-audit
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION || 'us-east-1' }}
+          # Prefer OIDC-based auth in production:
+          # role-to-assume: ${{ vars.AWS_AUDIT_ROLE_ARN }}
+          # role-session-name: iac-compliance-audit
+
+      - name: Run Live AWS Audit
+        id: live-audit
+        uses: ./.github/actions/iac-audit
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          scan-path: "."
+          mode: live
+          framework: ALL
+          cloud: AWS
+          fail-on: HIGH
+          output-format: html
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 3: Nightly full audit (static + live) — scheduled
+  # ────────────────────────────────────────────────────────────────────────────
+  nightly-full-audit:
+    name: Nightly Full Compliance Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        if: vars.ENABLE_LIVE_AWS_AUDIT == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION || 'us-east-1' }}
+
+      - name: Run Full Audit (static + live)
+        id: full-audit
+        uses: ./.github/actions/iac-audit
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          scan-path: "."
+          mode: ${{ vars.ENABLE_LIVE_AWS_AUDIT == 'true' && 'all' || 'static' }}
+          framework: ALL
+          fail-on: HIGH
+          output-format: html
+
+      - name: Create GitHub Issue for CRITICAL findings
+        if: steps.full-audit.outputs.critical != '0' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const critical = '${{ steps.full-audit.outputs.critical }}';
+            const high     = '${{ steps.full-audit.outputs.high }}';
+            const runUrl   = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[IaC Audit] ${critical} CRITICAL + ${high} HIGH findings — ${new Date().toISOString().split('T')[0]}`,
+              body: [
+                '## Nightly IaC Compliance Audit — Action Required',
+                '',
+                `The scheduled compliance audit found **${critical} CRITICAL** and **${high} HIGH** findings.`,
+                '',
+                `[View full audit report](${runUrl}) — download the \`iac-audit-report\` artifact.`,
+                '',
+                '**Action required:** Assign this issue to the infrastructure team for remediation.',
+                '',
+                'Frameworks: PCI DSS v4.0 · SOC 2 Type 2 · GDPR · HIPAA',
+              ].join('\n'),
+              labels: ['compliance', 'security', 'infrastructure'],
+            });

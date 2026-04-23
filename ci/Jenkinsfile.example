@@ -1,0 +1,114 @@
+// Jenkinsfile.example — IaC Compliance Audit stage for Jenkins pipelines
+// Copy the relevant stage(s) into your existing Jenkinsfile.
+//
+// Required Jenkins credentials:
+//   anthropic-api-key  — Secret text credential containing your Anthropic API key
+//
+// Required tools on Jenkins agent:
+//   node, npm, bash, git
+
+pipeline {
+    agent { label 'linux' }  // Any Linux agent with node/npm
+
+    options {
+        timeout(time: 20, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        ANTHROPIC_API_KEY = credentials('anthropic-api-key')  // Jenkins credential
+        IAC_AUDIT_FAIL_ON = 'CRITICAL'    // Block build on CRITICAL findings
+        IAC_AUDIT_OUTPUT  = 'html'        // Generate HTML dashboard
+        IAC_AUDIT_MODE    = 'static'      // Static scan only (no cloud creds needed)
+        IAC_AUDIT_FRAMEWORK = 'ALL'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps { checkout scm }
+        }
+
+        stage('Install Claude Code') {
+            steps {
+                sh 'npm install -g @anthropic-ai/claude-code'
+                sh 'claude --version'
+            }
+        }
+
+        stage('IaC Compliance Audit') {
+            steps {
+                script {
+                    // Install the skill
+                    sh '''
+                        mkdir -p ~/.claude/skills/iac-audit
+                        cp skills/iac-audit/SKILL.md ~/.claude/skills/iac-audit/SKILL.md
+                    '''
+
+                    // Run the audit — capture exit code without failing immediately
+                    def auditExit = sh(
+                        script: '''
+                            bash ci/scan.sh \
+                              --path . \
+                              --mode "${IAC_AUDIT_MODE}" \
+                              --framework "${IAC_AUDIT_FRAMEWORK}" \
+                              --output "${IAC_AUDIT_OUTPUT}" \
+                              --fail-on "${IAC_AUDIT_FAIL_ON}" \
+                              --report-dir ./iac-audit-reports
+                        ''',
+                        returnStatus: true
+                    )
+
+                    // Archive the HTML report (always, even on failure)
+                    archiveArtifacts(
+                        artifacts: 'iac-audit-reports/**',
+                        allowEmptyArchive: true,
+                        fingerprint: true
+                    )
+
+                    // Publish HTML report in Jenkins dashboard
+                    publishHTML(target: [
+                        allowMissing:          false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll:               true,
+                        reportDir:             'iac-audit-reports',
+                        reportFiles:           'latest.html',
+                        reportName:            'IaC Compliance Report',
+                        reportTitles:          'IaC Compliance Audit'
+                    ])
+
+                    // Now fail the build if the audit failed
+                    if (auditExit != 0) {
+                        error("IaC Compliance Audit FAILED — findings at or above ${IAC_AUDIT_FAIL_ON} severity. Check the 'IaC Compliance Report' tab.")
+                    }
+                }
+            }
+        }
+
+        stage('Deploy') {
+            when { branch 'main' }
+            steps {
+                echo "Deploy stage — only reached if compliance audit passed."
+                // Your existing deploy steps here
+            }
+        }
+    }
+
+    post {
+        always {
+            // Clean up API key from environment
+            script { env.ANTHROPIC_API_KEY = '' }
+        }
+        failure {
+            emailext(
+                subject: "IaC Compliance Audit FAILED — ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """
+                    The IaC compliance audit failed for ${env.JOB_NAME}.
+                    Build: ${env.BUILD_URL}
+                    Review the IaC Compliance Report tab for details.
+                """,
+                to: '${DEFAULT_RECIPIENTS}'
+            )
+        }
+    }
+}

@@ -1,0 +1,32 @@
+# Generated audit reports (runtime output — not committed)
+iac-audit-reports/
+
+# Test fixtures (local development only)
+test-fixtures/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (if ever installing locally)
+node_modules/
+npm-debug.log*
+
+# Terraform state / cache
+**/.terraform/
+**/.terragrunt-cache/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+
+# Secrets — never commit
+.env
+.env.*
+*.pem
+*.key

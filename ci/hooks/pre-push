@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# pre-push — full Claude IaC Compliance Audit before push
+# Requires ANTHROPIC_API_KEY to be set in your shell environment.
+#
+# Install:  bash ci/install-hooks.sh
+# Skip:     git push --no-verify
+
+set -euo pipefail
+
+CYAN='\033[0;36m'; YELLOW='\033[0;33m'; RED='\033[0;31m'; GREEN='\033[0;32m'; NC='\033[0m'
+
+log()  { echo -e "${CYAN}[pre-push]${NC} $*"; }
+warn() { echo -e "${YELLOW}[pre-push] WARN:${NC} $*" >&2; }
+err()  { echo -e "${RED}[pre-push] ERROR:${NC} $*" >&2; }
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  err "Not inside a git repository."; exit 1
+}
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCAN_SH="$HOOK_DIR/../scan.sh"
+
+# ─── Prerequisites ────────────────────────────────────────────────────────────
+
+if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+  warn "ANTHROPIC_API_KEY not set — skipping pre-push compliance audit."
+  warn "Set it permanently:  echo 'export ANTHROPIC_API_KEY=sk-ant-...' >> ~/.zshrc"
+  warn "CI/CD will still audit on push."
+  exit 0
+fi
+
+if ! command -v claude &>/dev/null; then
+  warn "claude CLI not found — skipping pre-push audit."
+  warn "Install: npm install -g @anthropic-ai/claude-code"
+  exit 0
+fi
+
+# ─── Determine what changed ───────────────────────────────────────────────────
+
+REMOTE="$1"
+REMOTE_URL="${2:-}"
+
+IAC_CHANGED=false
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # Skip deletions
+  [[ "$local_sha" == "0000000000000000000000000000000000000000" ]] && continue
+
+  # Determine comparison base
+  if [[ "$remote_sha" == "0000000000000000000000000000000000000000" ]]; then
+    # New branch — compare against the initial commit if only one exists,
+    # or against the merge-base with the default branch
+    COMMIT_COUNT=$(git rev-list --count "$local_sha" 2>/dev/null || echo 1)
+    if [[ "$COMMIT_COUNT" -le 1 ]]; then
+      # Single-commit repo — scan everything
+      IAC_CHANGED=true; break
+    fi
+    BASE=$(git merge-base HEAD "$(git rev-list --max-parents=0 HEAD)" 2>/dev/null \
+      || git rev-list --max-parents=0 HEAD)
+  else
+    BASE="$remote_sha"
+  fi
+
+  CHANGED=$(git diff --name-only "$BASE" "$local_sha" 2>/dev/null \
+    | grep -E '\.(tf|hcl|yaml|yml)$|Dockerfile|Jenkinsfile' || true)
+  if [[ -n "$CHANGED" ]]; then
+    IAC_CHANGED=true; break
+  fi
+done
+
+if [[ "$IAC_CHANGED" == "false" ]]; then
+  log "No IaC files changed in this push — skipping compliance audit."
+  exit 0
+fi
+
+# ─── Run full audit ───────────────────────────────────────────────────────────
+
+log "IaC files changed — running compliance audit before push to ${REMOTE} ${REMOTE_URL:+(${REMOTE_URL})}"
+log "This may take 30–90 seconds. Use 'git push --no-verify' to skip."
+echo ""
+
+REPORT_DIR="$REPO_ROOT/.iac-audit-reports"
+
+IAC_AUDIT_PATH="$REPO_ROOT" \
+IAC_AUDIT_MODE="static" \
+IAC_AUDIT_FRAMEWORK="ALL" \
+IAC_AUDIT_OUTPUT="html" \
+IAC_AUDIT_FAIL_ON="${IAC_AUDIT_FAIL_ON:-HIGH}" \
+IAC_AUDIT_REPORT_DIR="$REPORT_DIR" \
+  bash "$SCAN_SH" || {
+    EXIT=$?
+    echo ""
+    err "Pre-push audit FAILED (exit $EXIT)."
+    err "Open the report:       open ${REPORT_DIR}/latest.html"
+    err "Push anyway (not recommended): git push --no-verify"
+    exit "$EXIT"
+  }
+
+log "Audit passed. Continuing push…"
+exit 0
